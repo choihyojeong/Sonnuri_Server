@@ -3,7 +3,6 @@ import nest_asyncio
 import uvicorn
 from fastapi import FastAPI
 from api import router
-from ws import ws_router
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
