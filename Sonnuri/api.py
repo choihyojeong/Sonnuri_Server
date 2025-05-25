@@ -131,17 +131,4 @@ async def websocket_send(websocket: WebSocket):
             await asyncio.sleep(10)
     except WebSocketDisconnect:
         send_clients.remove(websocket)
-        
-@router.websocket("/chat")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    print("WebSocket 연결됨")
-
-    try:
-        while True:
-            data = await websocket.receive_text()
-            print(f"받은 메시지: {data}")
-            await websocket.send_text(f"Echo: {data}")
-    except WebSocketDisconnect:
-        print("WebSocket 연결 끊김")
 
