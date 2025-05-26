@@ -36,11 +36,26 @@ async def get_sign_video(lang: str, text: str):
     return {"video_url": f"/static/videos/{lang}/{text}.mp4"}
 
 @router.post("/upload")
-async def upload_sign_video(file: UploadFile = File(...)):
+async def upload_and_evaluate_sign_video(
+    file: UploadFile = File(...),
+    target: str = File(...)
+):
     save_path = os.path.join(UPLOADS_DIR, file.filename)
     with open(save_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-    return {"message": "업로드 완료", "file_url": f"/uploads/{file.filename}"}
+
+    # TODO: 여기에 실제 AI 모델 평가 로직 추가
+    # 예시: 정답 영상과 비교한 후 정확도/정오 판단
+    # 지금은 임시로 파일명 기준으로 판단
+    is_correct = target in file.filename.lower()
+    result = "정답" if is_correct else "오답"
+
+    return {
+        "message": "업로드 완료",
+        "file_url": f"/uploads/{file.filename}",
+        "result": result
+    }
+
 
 @router.post("/accuracy")
 async def check_accuracy(target: str, video: UploadFile = File(...)):
