@@ -72,4 +72,63 @@ def get_sign_word_detail(word_id: int) -> Dict:
         "video_url": word["video_url"],
         "description": word["description"]
     }
+    
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+import os
+import asyncio
+import cv2
+import numpy as np
+receive_clients = set()
+send_clients = set()
+
+def draw_heart(img, center, size=50, color=(0, 0, 255), thickness=-1):
+    x, y = center
+    radius = size // 3
+    cv2.circle(img, (x - radius, y - radius), radius, color, thickness)
+    cv2.circle(img, (x + radius, y - radius), radius, color, thickness)
+    pts = np.array([
+        [x - size, y - radius],
+        [x + size, y - radius],
+        [x, y + size]
+    ])
+    cv2.fillPoly(img, [pts], color)
+
+def process_frame(frame_bytes: bytes) -> bytes:
+    
+    # 받은 프레임을 처리하는 로직 -> AI 구현
+
+    return frame_bytes  # 가공 없이 그대로 반환
+
+@router.websocket("/stream/receive")
+async def websocket_receive(websocket: WebSocket):
+    await websocket.accept()
+    receive_clients.add(websocket)
+    try:
+        while True:
+            frame = await websocket.receive_bytes()
+            processed_frame = process_frame(frame)  # 처리된 프레임
+
+            # 모든 send 클라이언트에 처리된 프레임 전송
+            disconnected = []
+            for client in send_clients:
+                try:
+                    await client.send_bytes(processed_frame)
+                except Exception:
+                    disconnected.append(client)
+            for dc in disconnected:
+                send_clients.remove(dc)
+    except WebSocketDisconnect:
+        receive_clients.remove(websocket)
+
+@router.websocket("/stream/send")
+async def websocket_send(websocket: WebSocket):
+    await websocket.accept()
+    send_clients.add(websocket)
+    try:
+        while True:
+            # 송신 클라이언트가 연결 유지용으로 텍스트 메시지 보내주거나
+            # 그냥 연결 유지만 할 수도 있음
+            await asyncio.sleep(10)
+    except WebSocketDisconnect:
+        send_clients.remove(websocket)
 

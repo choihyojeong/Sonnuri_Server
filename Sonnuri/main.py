@@ -4,6 +4,9 @@ import uvicorn
 from fastapi import FastAPI
 from api import router
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+
 import os
 
 app = FastAPI()
@@ -14,6 +17,14 @@ app.include_router(router)
 # 정적 파일 mount
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],  # 또는 ["*"] 개발 중에는 * 허용 가능
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 def run():
     nest_asyncio.apply()
