@@ -1,0 +1,14 @@
+[
+  {
+    "id": 1,
+    "word": "안녕하세요",
+    "video_url": "/static/videos/kr/hello.mp4",
+    "description": "한국어 인사말 표현입니다."
+  },
+  {
+    "id": 2,
+    "word": "고맙습니다",
+    "video_url": "/static/videos/kr/thanks.mp4",
+    "description": "감사의 표현입니다."
+  }
+]
