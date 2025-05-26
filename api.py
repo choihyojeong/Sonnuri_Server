@@ -7,6 +7,7 @@ from fastapi import FastAPI, APIRouter, UploadFile, File, WebSocket, Request
 from fastapi.responses import JSONResponse
 from typing import Dict, List
 from typing import Any
+import atexit
 
 router = APIRouter()
 
@@ -75,3 +76,12 @@ def get_sign_word_detail(word_id: int) -> Dict:
         "description": word["description"]
     }
 
+
+def cleanup_uploads():
+    for f in os.listdir(UPLOADS_DIR):
+        file_path = os.path.join(UPLOADS_DIR, f)
+        if os.path.isfile(file_path):
+            os.remove(file_path)
+    print("uploads 폴더 정리 완료")
+
+atexit.register(cleanup_uploads)
