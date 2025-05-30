@@ -1,18 +1,17 @@
 # api.py
-from fastapi.staticfiles import StaticFiles
-import os
-import shutil
-import json
-from fastapi import FastAPI, APIRouter, UploadFile, File, WebSocket, Request
+
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.responses import JSONResponse
-from typing import Dict, List
+from typing import List, Dict
+import os, json, shutil, random, asyncio, cv2, numpy as np
 
 router = APIRouter()
 
-UPLOADS_DIR = "uploads"
 STATIC_DIR = "static"
+UPLOADS_DIR = "uploads"
 SIGN_DICT_PATH = os.path.join(STATIC_DIR, "data", "sign_dictionary.json")
 
+# Load dictionary
 def load_sign_dictionary():
     try:
         with open(SIGN_DICT_PATH, encoding="utf-8") as f:
@@ -22,62 +21,122 @@ def load_sign_dictionary():
 
 sign_dictionary = load_sign_dictionary()
 
-@router.get("/")
-def read_root():
-    return {"message": "Welcome"}
+# ---------------------- 1. 학습하기 ----------------------
 
-@router.get("/learn/{lang}/{text}")
-async def get_sign_video(lang: str, text: str):
-    video_path = os.path.join(STATIC_DIR, "videos", lang, f"{text}.mp4")
-    if not os.path.exists(video_path):
-        return JSONResponse(status_code=404, content={"detail": "영상 파일을 찾을 수 없습니다."})
-    return {"video_url": f"/static/videos/{lang}/{text}.mp4"}
+@router.get("/learn/{char}")
+def get_learning_video(char: str):
+    """자모 학습용 영상 제공"""
+    #video_path = os.path.join(STATIC_DIR, "videos", "{char}", f"{char}_1.mp4")
+    #if not os.path.exists(video_path):
+    #    return JSONResponse(status_code=404, content={"detail": "영상이 존재하지 않습니다."})
+    return {"video_url": f"/static/videos/{char}/{char}_1.mp4"}
 
-@router.post("/upload")
-async def upload_sign_video(file: UploadFile = File(...)):
-    save_path = os.path.join(UPLOADS_DIR, file.filename)
-    with open(save_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    return {"message": "업로드 완료", "file_url": f"/uploads/{file.filename}"}
-
-@router.post("/accuracy")
-async def check_accuracy(target: str, video: UploadFile = File(...)):
+# 1-1. ---------------- 업로드 형식
+@router.post("/learn/accuracy")
+async def check_learning_accuracy(target: str, video: UploadFile = File(...)):
+    """AI에게 영상 전달하여 정확도 및 자모 반환"""
     save_path = os.path.join(UPLOADS_DIR, video.filename)
     with open(save_path, "wb") as buffer:
         shutil.copyfileobj(video.file, buffer)
-    similarity_score = 0.0  # TODO: 유사도 계산
-    return {"target": target, "accuracy": similarity_score}
 
-@router.post("/translate")
-async def translate_sign(input_type: str, payload: UploadFile = File(...)):
-    save_path = os.path.join(UPLOADS_DIR, payload.filename)
-    with open(save_path, "wb") as buffer:
-        shutil.copyfileobj(payload.file, buffer)
-    if input_type == "text":
-        return {"video_url": "/static/videos/translated/sample.mp4"}
-    return {"text": "번역된 문장 예시"}
+    # TODO: AI 판단 로직 호출 → 예시 반환
+    result = {"gesture": target, "confidence": round(random.uniform(0.85, 0.98), 3)}
+    return result
 
-@router.get("/words")
-def list_sign_words() -> Dict[str, List[Dict[str, str]]]:
-    return {"words": [{"id": w["id"], "word": w["word"]} for w in sign_dictionary]}
+# 1-2. ---------------- 실시간 형식
+@router.websocket("/stream/learn")
+async def websocket_learn(websocket: WebSocket):
+    """학습 모드: 실시간 영상 프레임 받아서 정확도 계산"""
+    await websocket.accept()
+    try:
+        while True:
+            frame = await websocket.receive_bytes()
+            processed_frame = process_frame(frame)  # AI 분석
 
-@router.get("/words/{word_id}")
-def get_sign_word_detail(word_id: int) -> Dict:
+            # 임시 정확도 및 제스처 판단 (예시)
+            result = {
+                "gesture": "ㄱ",  # 실제 모델 결과
+                "confidence": round(random.uniform(0.85, 0.98), 3)
+            }
+
+            await websocket.send_text(json.dumps(result))
+    except WebSocketDisconnect:
+        print("웹소켓 연결 종료 (학습)")
+
+
+# ---------------------- 2. 학습 테스트하기 ----------------------
+
+@router.get("/test/random")
+def get_random_test_word():
+    """랜덤 자모 반환 (객관식 제공용)"""
+    random_word = random.choice(sign_dictionary)
+    return {"id": random_word["id"], "word": random_word["word"], "video_url": random_word["video_url"]}
+
+@router.post("/test/submit")
+def check_test_answer(word_id: int, selected: str):
+    """정답 체크"""
     word = next((w for w in sign_dictionary if w["id"] == word_id), None)
     if not word:
         return JSONResponse(status_code=404, content={"detail": "단어를 찾을 수 없습니다."})
-    return {
-        "id": word["id"],
-        "word": word["word"],
-        "video_url": word["video_url"],
-        "description": word["description"]
-    }
-    
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-import os
-import asyncio
-import cv2
-import numpy as np
+    is_correct = word["word"] == selected
+    return {"correct": is_correct, "answer": word["word"]}
+
+# ---------------------- 3. 번역하기 ----------------------
+
+@router.get("/translate/reset")
+def reset_translation():
+    translated_chars.clear()
+    return {"message": "초기화 완료"}
+
+# ---------------- 3-1. 업로드 형식
+translated_chars = []
+
+@router.post("/translate/char")
+def receive_char(generated_char: str):
+    """자모 누적 저장"""
+    translated_chars.append(generated_char)
+    return {"current_word": "".join(translated_chars)}
+
+@router.get("/translate/result")
+def get_translated_result():
+    """누적 자모 → 단어 반환 및 외부 API 번역 결과 전달"""
+    word = "".join(translated_chars)
+    # TODO: 실제 번역 API 사용
+    translated = f"[{word}]에 대한 번역 예시"
+    return {"word": word, "translated": translated}
+
+# ---------------- 3-2. 실시간 형식
+@router.websocket("/stream/translate")
+async def websocket_translate(websocket: WebSocket):
+    """번역 모드: 실시간 영상으로 자모 누적 처리"""
+    await websocket.accept()
+    word_builder = []
+    CONFIDENCE_THRESHOLD = 0.90  # 일정 정확도 이상일 때만 저장
+    SEQ_LENGTH = 10 # 필요한 프레임 개수
+    try:
+        while True:
+            frame = await websocket.receive_bytes()
+            processed_frame = process_frame(frame)
+
+            # 인식된 자모 결과 (예시로 랜덤)
+            detected_char = random.choice(["ㄱ", "ㄴ", "ㅏ", "ㅓ", "ㅗ"])
+            confidence = round(random.uniform(0.0, 1.0), 3)
+
+            if confidence >= CONFIDENCE_THRESHOLD:
+                word_builder.append(detected_char)
+
+            await websocket.send_text(json.dumps({
+                "char": detected_char,
+                "confidence": confidence,
+                "accepted": confidence >= CONFIDENCE_THRESHOLD,
+                "current_word": "".join(word_builder)
+            }))
+    except WebSocketDisconnect:
+        print("웹소켓 연결 종료 (번역)")
+
+
+# ---------------------- 4. 웹소켓 (실시간 영상 처리) ----------------------
+
 receive_clients = set()
 send_clients = set()
 
@@ -131,4 +190,3 @@ async def websocket_send(websocket: WebSocket):
             await asyncio.sleep(10)
     except WebSocketDisconnect:
         send_clients.remove(websocket)
-
