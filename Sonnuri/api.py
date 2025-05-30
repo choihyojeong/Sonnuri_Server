@@ -21,6 +21,7 @@ def load_sign_dictionary():
 
 sign_dictionary = load_sign_dictionary()
 
+
 # ---------------------- 1. 학습하기 ----------------------
 
 @router.get("/learn/{char}")
@@ -48,18 +49,26 @@ async def check_learning_accuracy(target: str, video: UploadFile = File(...)):
 async def websocket_learn(websocket: WebSocket):
     """학습 모드: 실시간 영상 프레임 받아서 정확도 계산"""
     await websocket.accept()
+    frame_buffer = []
+    SEQ_LENGTH = 10  # 프레임 개수 기준
     try:
         while True:
             frame = await websocket.receive_bytes()
-            processed_frame = process_frame(frame)  # AI 분석
+            frame_buffer.append(frame)
 
-            # 임시 정확도 및 제스처 판단 (예시)
-            result = {
-                "gesture": "ㄱ",  # 실제 모델 결과
-                "confidence": round(random.uniform(0.85, 0.98), 3)
-            }
+            if len(frame_buffer) == SEQ_LENGTH:
+                # 10개 프레임 모였을 때 AI 분석
+                # TODO: 실제 AI 분석 함수로 처리
+                #processed_result = process_frame_batch(frame_buffer)
+                frame_buffer = []  # 버퍼 비우기
 
-            await websocket.send_text(json.dumps(result))
+                # 임시 정확도 및 제스처 판단 (예시)
+                result = {
+                    "gesture": "ㄱ",  # 실제 모델 결과
+                    "confidence": round(random.uniform(0.85, 0.98), 3)
+                }
+
+                await websocket.send_text(json.dumps(result))
     except WebSocketDisconnect:
         print("웹소켓 연결 종료 (학습)")
 
@@ -113,24 +122,30 @@ async def websocket_translate(websocket: WebSocket):
     word_builder = []
     CONFIDENCE_THRESHOLD = 0.90  # 일정 정확도 이상일 때만 저장
     SEQ_LENGTH = 10 # 필요한 프레임 개수
+    frame_buffer = []  # 프레임을 저장할 버퍼
     try:
         while True:
             frame = await websocket.receive_bytes()
-            processed_frame = process_frame(frame)
+            frame_buffer.append(frame)
 
-            # 인식된 자모 결과 (예시로 랜덤)
-            detected_char = random.choice(["ㄱ", "ㄴ", "ㅏ", "ㅓ", "ㅗ"])
-            confidence = round(random.uniform(0.0, 1.0), 3)
+            if len(frame_buffer) >= SEQ_LENGTH:
+                # 10개의 프레임이 모였을 때 처리
+                #processed_frame = process_frame(frame_buffer)  # TODO: AI 예측
+                frame_buffer = []  # 버퍼 초기화
 
-            if confidence >= CONFIDENCE_THRESHOLD:
-                word_builder.append(detected_char)
+                # 인식된 자모 결과 (예시로 랜덤)
+                detected_char = random.choice(["ㄱ", "ㄴ", "ㅏ", "ㅓ", "ㅗ"])
+                confidence = round(random.uniform(0.0, 1.0), 3)
 
-            await websocket.send_text(json.dumps({
-                "char": detected_char,
-                "confidence": confidence,
-                "accepted": confidence >= CONFIDENCE_THRESHOLD,
-                "current_word": "".join(word_builder)
-            }))
+                if confidence >= CONFIDENCE_THRESHOLD:
+                    word_builder.append(detected_char)
+
+                await websocket.send_text(json.dumps({
+                    "char": detected_char,
+                    "confidence": confidence,
+                    "accepted": confidence >= CONFIDENCE_THRESHOLD,
+                    "current_word": "".join(word_builder)
+                }))
     except WebSocketDisconnect:
         print("웹소켓 연결 종료 (번역)")
 
@@ -178,6 +193,7 @@ async def websocket_receive(websocket: WebSocket):
                 send_clients.remove(dc)
     except WebSocketDisconnect:
         receive_clients.remove(websocket)
+
 
 @router.websocket("/stream/send")
 async def websocket_send(websocket: WebSocket):
